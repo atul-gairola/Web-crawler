@@ -1,0 +1,14 @@
+{
+  "name": "web_scraper",
+  "version": "1.0.0",
+  "description": "A simple web scraper",
+  "main": "scraper.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Atul Gairola",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^4.0.0"
+  }
+}
