@@ -9,6 +9,8 @@
   "author": "Atul Gairola",
   "license": "ISC",
   "dependencies": {
+    "express": "^4.17.1",
+    "mongoose": "^5.9.19",
     "puppeteer": "^4.0.0"
   }
 }
