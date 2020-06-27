@@ -1,29 +1,67 @@
 const puppeteer = require("puppeteer");
-const DataModel = require("./db");
 
-( async () => {
-  // browser initialization 
+const DataModel = require("./schema");
+
+const { StartupModel, MarketModel } = DataModel;
+
+  module.exports = async () => {
+
+  // browser initialization
   const browser = await puppeteer.launch({
-      headless: false,
-      userDataDir: './cache',
-    });
+    headless: false,
+    userDataDir: "./cache",
+  });
   const page = await browser.newPage();
-  
+
   // Configure the navigation timeout
   page.setDefaultNavigationTimeout(0);
 
   // Navigate to the assigned url
   await page.goto("https://betalist.com/markets");
 
-  // acquiring the links from the industry page
-  const industry_data = await page.evaluate(() =>
-    [...document.querySelectorAll(".tag--card")].map((cur) => {
+
+  // returns data from industry page
+  const industry_data = await page.evaluate(() =>{
+
+  // function for formating the name of the industry
+    const formatIndustryName = (innerText) => {
+    const formattedString = innerText
+      .split(" ")
+      .splice(1)
+      .join(" ")
+      .split("\n");
+      
+    const count = formattedString.pop();
+
+    return {
+      name: formattedString.join(' '),
+      count: Number(count)
+    };
+  };
+
+  const data = [...document.querySelectorAll(".tag--card")].map((cur) => {
       return {
-        industryName: cur.innerText,
+        industryName: formatIndustryName(cur.innerText).name,
+        count: formatIndustryName(cur.innerText).count,
         industryLink: cur.href,
       };
-    })
+    });
+
+    return data;
+  }
   );
+
+
+   // saving industries in db
+   industry_data.map(async(cur) => {
+    const industry = new MarketModel(cur);
+     
+    await industry.save((err) => {
+      if (err) console.log(err);
+      else console.log("industry added to industries collection");
+    });
+   })
+
 
   // looping through all the industry links
   for (let i = 0; i < industry_data.length; i++) {
@@ -36,55 +74,69 @@ const DataModel = require("./db");
         (cur) => cur.href
       )
     );
-    
+
     //looping through all the startup links and storing data of each startup
     for (let j = 0; j < startup_links.length; j++) {
+      await page.goto(startup_links[j], { waitUntil: "networkidle2" });
 
-      await page.goto(startup_links[j], { waitUntil: 'networkidle2' });
-            
-      // scraping data
+      // returns data from individual startup page
       const startupData = await page.evaluate(() => {
-        
+
         // dom elements to be scraped
         const DOM = {
-        DOMName: document.querySelector(".startup__summary__name"),
-        DOMPitch: document.querySelector(".startup__summary__pitch"),
-        DOMDescription: document.querySelector(".startup__description"),
-        DOMSiteLink: document.querySelector(".button2--contrast"),
-        DOMMakers: [...document.querySelectorAll(".maker__details")]
-        }
-        
-        return {  
-          name: (DOM.DOMName) ? DOM.DOMName.innerText : null,
-          pitch: (DOM.DOMPitch) ? DOM.DOMPitch.innerText : null,
-          description: (DOM.DOMDescription) ? DOM.DOMDescription.innerText : null,
-          siteLink: (DOM.DOMSiteLink) ? DOM.DOMSiteLink.href : null,
-          makers: (DOM.DOMMakers.length > 0) ? DOM.DOMMakers.map(
-            (cur) => cur.innerText
-          ) : null,
+          DOMName: document.querySelector(".startup__summary__name"),
+          DOMImage: [...document.querySelectorAll(".carousel__item")],
+          DOMPitch: document.querySelector(".startup__summary__pitch"),
+          DOMDescription: document.querySelector(".startup__description"),
+          DOMSiteLink: document.querySelector(".button2--contrast"),
+          DOMTwitterLink: document.querySelector(".button2--twitter"),
+          DOMFacebookLink: document.querySelector(".button2--facebook"),
+          DOMMakers: [...document.querySelectorAll(".maker")],
+        };
+
+        return {
+          name: DOM.DOMName ? DOM.DOMName.textContent : null,
+          images:  DOM.DOMImage.length > 0
+              ? DOM.DOMImage.map((cur) =>
+                  cur.querySelector("img") ? cur.querySelector("img").src : null
+                )
+              : null,
+          pitch: DOM.DOMPitch ? DOM.DOMPitch.innerText : null,
+          description: DOM.DOMDescription ? DOM.DOMDescription.innerText : null,
+          siteLink: DOM.DOMSiteLink ? DOM.DOMSiteLink.href : null,
+          socials: {
+            twitter: DOM.DOMTwitterLink ? DOM.DOMTwitterLink.href : null,
+            facebook: DOM.DOMFacebookLink ? DOM.DOMFacebookLink.href : null,
+          },
+          makersDetails: DOM.DOMMakers.length > 0
+              ? DOM.DOMMakers.map((cur) => ({
+                  avatar: cur.children[0].querySelector("img")
+                    ? cur.children[0].querySelector("img").src
+                    : null,
+                  name: cur.children[1].querySelector(".maker__name")
+                    ? cur.children[1].querySelector(".maker__name").innerText
+                    : null,
+                  role: cur.children[1].querySelector(".maker__role")
+                    ? cur.children[1].querySelector(".maker__role").innerText
+                    : null,
+                }))
+              : null,
         };
       });
 
-      const startupDataCategorized = {
-        industryName: industry_data[i].industryName,  
-        startupData
-      }
+      //individual startup data with industry reference
+      const startupDataWithIndustry = {
+        industryName: industry_data[i].industryName,
+        ...startupData,
+      };
 
-    //  console.log(startupData);  to check the data being saved
-
-    //  saving data to mongoDB 
-      const doc = new DataModel(startupDataCategorized);
-      doc.save((err) => {
-           if(err)
-           console.log(err);
-           else(err)
-           console.log('doc added');
-         }) 
-
+      //  saving startup data to mongoDB
+      const startup = new StartupModel(startupDataWithIndustry);
+      startup.save((err) => {
+        if (err) console.log(err);
+        else console.log("startup added to startups collection");
+      });
     }
-
   }
   await browser.close();
-
-})();
-
+};
