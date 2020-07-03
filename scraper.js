@@ -1,14 +1,12 @@
 const puppeteer = require("puppeteer");
 
-const DataModel = require("./schema");
-
-const { StartupModel, MarketModel } = DataModel;
+const { StartupModel, MarketModel } = require("./schema");
 
   module.exports = async () => {
 
   // browser initialization
   const browser = await puppeteer.launch({
-    headless: false,
+    headless: true,
     userDataDir: "./cache",
   });
   const page = await browser.newPage();
@@ -53,14 +51,17 @@ const { StartupModel, MarketModel } = DataModel;
 
 
    // saving industries in db
-   industry_data.map(async(cur) => {
+    industry_data.map(async(cur) => {
     const industry = new MarketModel(cur);
      
-    await industry.save((err) => {
+    return industry.save((err) => {
       if (err) console.log(err);
       else console.log("industry added to industries collection");
     });
-   })
+   });
+
+  //  // wait for an array of promises to resolve
+  //   await Promise.all(industriesPromises);
 
 
   // looping through all the industry links
@@ -138,5 +139,7 @@ const { StartupModel, MarketModel } = DataModel;
       });
     }
   }
+
+  mongoose.disconnect(() => console.log("disconnected from the db"));
   await browser.close();
 };
